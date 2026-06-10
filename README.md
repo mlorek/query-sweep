@@ -1,4 +1,8 @@
-# DBeaver QuerySweep Plugin
+<p align="center">
+  <img src="icons/querysweep-128.png" alt="QuerySweep" width="96" height="96">
+</p>
+
+<h1 align="center">DBeaver QuerySweep Plugin</h1>
 
 A DBeaver plugin that executes a SQL query against multiple database connections in parallel with color-coded, sortable results. Works with any DBeaver connection (Snowflake, PostgreSQL, MySQL, Oracle, …) as long as the query is valid for each target.
 

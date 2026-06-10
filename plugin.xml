@@ -10,6 +10,7 @@
               name="QuerySweep"
               category="io.github.mlorek.querysweep.category"
               class="io.github.mlorek.querysweep.QuerySweepView"
+              icon="icons/querysweep-16.png"
               restorable="true"/>
     </extension>
 
@@ -22,6 +23,11 @@
     <extension point="org.eclipse.ui.handlers">
         <handler commandId="io.github.mlorek.querysweep.open"
                  class="io.github.mlorek.querysweep.OpenQuerySweepHandler"/>
+    </extension>
+
+    <extension point="org.eclipse.ui.commandImages">
+        <image commandId="io.github.mlorek.querysweep.open"
+               icon="icons/querysweep-16.png"/>
     </extension>
 
     <extension point="org.eclipse.ui.menus">
