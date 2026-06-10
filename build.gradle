@@ -1,0 +1,145 @@
+plugins {
+    id 'java'
+}
+
+def pluginId = 'io.github.mlorek.querysweep'
+def pluginVersion = '1.0.0'
+def featureId = pluginId + '.feature'
+
+// Standard DBeaver locations, first existing one wins; -PdbeaverPlugins overrides.
+def dbeaverPluginsCandidates = [
+    '/usr/share/dbeaver-ce/plugins',                                                    // Linux (.deb)
+    '/Applications/DBeaver.app/Contents/Eclipse/plugins',                               // macOS
+    System.getProperty('user.home') + '/Applications/DBeaver.app/Contents/Eclipse/plugins' // macOS (user install)
+]
+def dbeaverPlugins = findProperty('dbeaverPlugins') ?:
+    dbeaverPluginsCandidates.find { new File(it).directory } ?:
+    dbeaverPluginsCandidates.first()
+
+if (!new File(dbeaverPlugins.toString()).directory) {
+    logger.warn("DBeaver plugins directory not found at ${dbeaverPlugins} - " +
+        'set -PdbeaverPlugins=/path/to/dbeaver/plugins')
+}
+
+dependencies {
+    compileOnly fileTree(dbeaverPlugins) {
+        include 'org.jkiss.dbeaver.core_*.jar'
+        include 'org.jkiss.dbeaver.model_*.jar'
+        include 'org.jkiss.dbeaver.ui_*.jar'
+        include 'org.jkiss.dbeaver.ui.editors.data_*.jar'
+        include 'org.jkiss.dbeaver.ui.editors.sql_*.jar'
+        include 'org.eclipse.ui_*.jar'
+        include 'org.eclipse.ui.workbench_*.jar'
+        include 'org.eclipse.core.runtime_*.jar'
+        include 'org.eclipse.core.commands_*.jar'
+        include 'org.eclipse.core.jobs_*.jar'
+        include 'org.eclipse.jface_*.jar'
+        include 'org.eclipse.swt_*.jar'
+        include 'org.eclipse.swt.cocoa.macosx.aarch64_*.jar'
+        include 'org.eclipse.swt.gtk.linux.x86_64_*.jar'
+        include 'org.eclipse.osgi_*.jar'
+        include 'org.eclipse.equinox.common_*.jar'
+        include 'org.eclipse.equinox.registry_*.jar'
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+sourceSets {
+    main {
+        java.srcDirs 'src'
+    }
+}
+
+tasks.named('jar') {
+    archiveBaseName = pluginId
+    archiveVersion = pluginVersion
+
+    manifest {
+        from 'META-INF/MANIFEST.MF'
+    }
+
+    from('.') {
+        include 'plugin.xml'
+        include 'icons/**'
+    }
+}
+
+// ---------------------------------------------------------------------------
+// p2 update site (for "Install New Software" / Eclipse Marketplace publishing)
+//
+// Uses the p2 publisher applications shipped inside the DBeaver installation
+// itself, so no extra tooling is required beyond `dbeaverPlugins`.
+// Entry point: ./gradlew updateSite  ->  build/updatesite
+// ---------------------------------------------------------------------------
+
+def p2Java = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(21)
+}
+
+def p2LauncherJar = {
+    fileTree(dbeaverPlugins) { include 'org.eclipse.equinox.launcher_*.jar' }.singleFile
+}
+
+def siteDir = layout.buildDirectory.dir('updatesite')
+
+def p2Application = { Exec task, String application, String... applicationArgs ->
+    task.executable = p2Java.get().executablePath.asFile.absolutePath
+    task.args = ['-jar', p2LauncherJar().absolutePath, '-application', application] +
+        applicationArgs.toList() +
+        ['-configuration', layout.buildDirectory.dir('p2tmp/configuration').get().asFile.absolutePath,
+         '-data', layout.buildDirectory.dir('p2tmp/workspace').get().asFile.absolutePath]
+}
+
+def featureJar = tasks.register('featureJar', Zip) {
+    archiveFileName = featureId + '_' + pluginVersion + '.jar'
+    destinationDirectory = layout.buildDirectory.dir('feature')
+    from('feature') {
+        include 'feature.xml'
+    }
+}
+
+def updateSiteSource = tasks.register('updateSiteSource', Sync) {
+    into layout.buildDirectory.dir('updatesite-src')
+    from(tasks.named('jar')) {
+        into 'plugins'
+        rename { pluginId + '_' + pluginVersion + '.jar' }
+    }
+    from(featureJar) {
+        into 'features'
+    }
+}
+
+def p2PublishFeaturesAndBundles = tasks.register('p2PublishFeaturesAndBundles', Exec) {
+    dependsOn updateSiteSource
+    doFirst {
+        siteDir.get().asFile.deleteDir()
+    }
+    p2Application(it, 'org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher',
+        '-metadataRepository', siteDir.get().asFile.toURI().toString(),
+        '-artifactRepository', siteDir.get().asFile.toURI().toString(),
+        '-source', layout.buildDirectory.dir('updatesite-src').get().asFile.absolutePath,
+        '-publishArtifacts',
+        '-compress')
+}
+
+def p2PublishCategory = tasks.register('p2PublishCategory', Exec) {
+    dependsOn p2PublishFeaturesAndBundles
+    p2Application(it, 'org.eclipse.equinox.p2.publisher.CategoryPublisher',
+        '-metadataRepository', siteDir.get().asFile.toURI().toString(),
+        '-categoryDefinition', file('feature/category.xml').toURI().toString(),
+        '-categoryQualifier', 'querysweep',
+        '-compress')
+}
+
+tasks.register('updateSite') {
+    group = 'distribution'
+    description = 'Builds an installable p2 update site at build/updatesite (needs a local DBeaver, see -PdbeaverPlugins)'
+    dependsOn p2PublishCategory
+}

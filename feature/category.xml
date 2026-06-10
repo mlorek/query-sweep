@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature id="io.github.mlorek.querysweep.feature" version="1.0.0">
+      <category name="querysweep"/>
+   </feature>
+   <category-def name="querysweep" label="QuerySweep">
+      <description>QuerySweep multi-connection query tools for DBeaver.</description>
+   </category-def>
+</site>
